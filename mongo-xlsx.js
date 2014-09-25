@@ -1,10 +1,10 @@
-var mongodb = require('mongodb');
-var prompt = require('prompt');
 var fs = require('fs');
 var path = require('path');
-var QueryBuilder = require('./lib/QueryBuilder');
+var mongodb = require('mongodb');
+var prompt = require('prompt');
 var TermMenu = require('terminal-menu');
-var XLSXLib = require('XLSXLib');
+var QueryBuilder = require('./lib/QueryBuilder');
+var XLSXLib = require('./lib/XLSXLib');
 
 var options = (function() {
     var options = {
@@ -52,7 +52,7 @@ var options = (function() {
     }
 
 }());
-var wbkPath = process.env.serverDump;
+var wbkPath = process.env.HOME + '/Documents';
 
 getOptions(start);
 
@@ -134,13 +134,13 @@ function getCredentials(workbookName){
             port : 27017
         };
         var queryFields = {
-            database : 'HartTest1',
-            collection : 'twitter',
+            database : 'test',
+            collection : 'test',
             user : result.user,
             pass : result.pass
         };
         var resultFields = {
-            database : 'ResultTest',
+            database : 'test',
             collection : undefined,
             user : result.user,
             pass : result.pass
