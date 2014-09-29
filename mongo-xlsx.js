@@ -1,64 +1,127 @@
 var fs = require('fs');
 var path = require('path');
+var cli = require('cli');
 var mongodb = require('mongodb');
 var prompt = require('prompt');
 var TermMenu = require('terminal-menu');
+var NPU = require('./lib/NestedPropertyUtil');
 var QueryBuilder = require('./lib/QueryBuilder');
 var XLSXLib = require('./lib/XLSXLib');
 
-var options = (function() {
-    var options = {
-        repress : false,
-        verbose : false,
-        configure : false
-    }
-    var synonyms = {};
-    synonyms['-r'] = 'repress';
-    synonyms['-v'] = 'verbose';
-    synonyms['-c'] = 'configure';
+var configFileName = 'config.json';
 
-    function get(name){
-        var option = options[name];
+setup();
 
-        if (!option){
-            option = options[synonyms[name]];
+function setup(){
+    var callback = defineCLIOptions;
+    var cli = require('cli');
+    var config = {
+        wbkLib : process.env.HOME + '/Documents',
+        dbIn : {
+            name : 'test',
+            host : 'localhost',
+            port : 27017
+        },
+        dbOut : {
+            name : 'test',
+            host : 'localhost',
+            port : 27017
         }
+    };
+    var configJSON;
 
-        return option;
-    }
-
-    function set(name, value){
-        if (options[name]){
-            options[name] = value;
-            return true;          
-        }
-        else if (synonyms[name]){
-            options[synonyms[name]] = value;
-            return true;
+    fs.exists(configFileName, function (exists) {
+        if (!exists){
+            configJSON = JSON.stringify(config);
+            fs.writeFile(configFileName, configJSON, function(err){
+                if (err) dbErrorHandler(err);
+                callback(cli, config);
+            });
         }
         else{
-            return false;
+            fs.readFile(configFileName, function(err, data){
+                if (err) dbErrorHandler(err);
+                config = JSON.parse(data);
+                callback(cli, config);
+            });
         }
+    });
+}
+
+function defineCLIOptions(cli, config){
+    var callback = prepOptions;
+    var option;
+
+    cli.parse({
+        repress: ['r', 'Do not output any information', 'bool', false],
+        verbose: ['v', 'Output information about inserts', 'bool', false],
+        configure: ['c', 'Configure paths and other settings', 'bool', false]
+    });
+
+    cli.main(callback.bind(null, config));
+}
+
+function prepOptions(config, args, options){
+    var callback = getWBKPath;
+
+    function optionMenu(config){
+        var menu = TermMenu({ width: 40, x: 4, y: 2 });
+        var props = NPU.getAllProps(config);
+
+        menu.reset();
+        menu.write('Select a field and press enter to change\n');
+        menu.write('----------------------------------------\n');
+        props.forEach(function(prop){
+            menu.add(prop);
+        });
+        menu.add('MAKE DEFAULT');
+        menu.add('ACCEPT');
+        menu.add('EXIT');
+
+        menu.on('select', function (label) {
+            var prop = label.split(':')[0];
+            var firstProp = prop.split('.')[0];
+
+            menu.close();
+            if (label === 'EXIT'){
+                console.log('Exiting...');
+                process.exit(0);
+            }
+            else if (label === 'ACCEPT'){
+                callback(config);
+            }
+            else if (label === 'MAKE DEFAULT'){
+                menu.write('Saving...');
+                fs.writeFile('config.json', JSON.stringify(config, null, 4), function(err){
+                    if (err) dbErrorHandler(err);
+                    optionMenu(config);
+                });
+            }
+            else{
+                prompt.get([prop], function (err, result) {
+                    if (err) dbErrorHandler(err);
+
+                    config = NPU.set(config, prop, result[prop]);
+                    optionMenu(config);
+                });
+            }
+        });
+        menu.createStream().pipe(process.stdout);
     }
 
-    function contains(name){
-        return (options[name] || synonyms[name]);
+    config.options = options;
+    if (options.configure){
+        optionMenu(config);
     }
-
-    return {
-        get : get,
-        set : set,
-        contains : contains
+    else{
+        callback(config);
     }
+}
 
-}());
-var wbkPath = process.env.HOME + '/Documents';
-
-getOptions(start);
-
-function start(){
-    var fileNames = fs.readdirSync(wbkPath);
+function getWBKPath(config){
+    var callback = getCredentials;
     var menu = TermMenu({ width: 29, x: 4, y: 2 });
+    var fileNames = fs.readdirSync(config.wbkLib);
     var workbookNames = [];
     var ext;
     var basename;
@@ -67,12 +130,10 @@ function start(){
     menu.reset();
     menu.write('Select XLSX Query File\n');
     menu.write('-------------------------\n');
-
     for(var i = 0; i < fileNames.length; i++){
         ext = path.extname(fileNames[i]);
         basename;
         validExtension = '.xlsx';
-
         if(ext === validExtension){
             basename = path.basename(fileNames[i], validExtension);
             menu.add(basename);
@@ -83,85 +144,48 @@ function start(){
 
     menu.on('select', function (label) {
         menu.close();
-
         if(label === 'EXIT'){
             console.log('Exiting...');
             process.exit(0);
         }
         else{
-            getCredentials(label);
+            config.wbkName = label;
+            config.wbkPath = path.join(config.wbkLib, label + validExtension);
+            callback(config);
         }
     });
     menu.createStream().pipe(process.stdout);
-
 }
 
-function getOptions(callback){
-    var option;
+function getCredentials(config){
+    var callback = connectToDBs;
 
-    args = process.argv;
-    args.splice(0, 2);
-    for(var i = 0; i < args.length; i++){
-        option = args[i];
-        if (options.contains(option)){
-            options.set(option, true);
-        }
-        else{
-            console.log('"' + option + '": invalid option.');
-        }
-    }
-
-    if (options.get('configure')){
-        prompt.start();
-        prompt.get(['Folder'], function (err, result) {
-            if (err) throw err;
-            wbkPath = result.Folder;
-            callback();
-        });
-    }
-    else{
-        callback();
-    }
-}
-
-function getCredentials(workbookName){
     prompt.start();
-    prompt.get(['user', 'pass'], function (err, result) {
+    prompt.get(['dbInUser', 'dbInPass', 'dbOutUser', 'dbOutPass'], function (err, result) {
         if (err) throw err;
 
-        var QueryDb = {
-            host : 'localhost',
-            port : 27017
-        };
-        var queryFields = {
-            database : 'test',
-            collection : 'test',
-            user : result.user,
-            pass : result.pass
-        };
-        var resultFields = {
-            database : 'test',
-            collection : undefined,
-            user : result.user,
-            pass : result.pass
-        };
+        config.dbIn.user = result.dbInUser;
+        config.dbIn.pass = result.dbInPass;
+        config.dbIn.collection = XLSXLib.openWorkbook(config.wbkPath).SheetNames[0];
+        config.dbOut.user = result.dbOutUser;
+        config.dbOut.pass = result.dbOutPass;
+        config.dbOut.collection = config.wbkName;
 
-        resultFields.collection = workbookName;
-        connectToDbs(workbookName, queryFields, resultFields);
+        callback(config);
     });
 }
 
-function connectToDbs(workbookName, queryFields, resultFields){
-    connectToDB(queryFields, function(queryCollection, queryDb){
-        connectToDB(resultFields, function(resultCollection, resultDb){
-            collectionExists(resultDb, resultFields.collection, function(exists){
+function connectToDBs(config){
+    connectToDB(config.dbIn, function(queryCollection, queryDb){
+        connectToDB(config.dbOut, function(resultCollection, resultDb){
+            collectionExists(resultDb, config.dbOut.collection, function(exists){
                 if(exists){
-                    var msg = 'Collection by the name "' + resultFields.collection;
+                    var msg = 'Collection by the name "' + config.dbOut.collection;
                     msg += '" already exits. Please rename and try again.';
-                    dbErrorHanlder(msg);
+                    dbErrorHandler(msg);
                 }
                 else{
-                    main(workbookName, queryCollection, resultCollection);
+                    main(config, queryCollection, resultCollection);
                 }
             });
         });
@@ -170,32 +194,40 @@ function connectToDbs(workbookName, queryFields, resultFields){
 
 function connectToDB(fields, callback){
     var collection;
-    var database = new mongodb.Db(fields.database, new mongodb.Server("127.0.0.1", 27017), {safe: false});
+    var database = new mongodb.Db(fields.name, new mongodb.Server("127.0.0.1", 27017), {safe: false});
 
     database.open(function(err, db) {
         if(err){
-            dbErrorHanlder(err);
+            dbErrorHandler(err);
         }
         else{
-            db.authenticate(fields.user, fields.pass, function(err, result) {
-                if (!err && !result){
-                    err = new Error('Could not authenticate user ' + fields.user);
-                }
-                if (err){
-                    dbErrorHanlder(err);
-                }
-                else{
-                    collection = db.collection(fields.collection);
-                    callback(collection, db);                    
-                }
-            });
+            if (fields.user && fields.pass){
+                db.authenticate(fields.user, fields.pass, connect.bind(null, db));
+            }
+            else{
+                connect(db, null, true);
+            }
         }
     });
+
+    function connect(db, err, result) {
+        if (!err && !result){
+            err = new Error('Could not authenticate user ' + fields.user);
+        }
+        if (err){
+            dbErrorHandler(err);
+        }
+        else{
+            collection = db.collection(fields.collection);
+            callback(collection, db);                    
+        }
+    }
 }
 
-function dbErrorHanlder(err){
-    console.dir(err);
-    process.exit(1);
+function dbErrorHandler(err){
+    throw err;
+    // console.dir(err);
+    // process.exit(1);
 }
 
 function collectionExists(db, collectionName, callback){
@@ -211,16 +243,17 @@ function collectionExists(db, collectionName, callback){
     });
 }
 
-function main(workbookName, queryCollection, resultCollection){
-    var mainWorkbook = XLSXLib.openWorkbook(wbkPath + '/' + workbookName + '.xlsx');
+function main(config, queryCollection, resultCollection){
+    var mainWorkbook = XLSXLib.openWorkbook(config.wbkLib + '/' + config.wbkName + '.xlsx');
     var sheet = mainWorkbook.Sheets[mainWorkbook.SheetNames[0]];
     var sheetQueries = getSheetQueries(sheet);
     var queryContainers = sheetQueries.queryContainers;
+    var options = config.options;
     var insertedIDs = {};
     var duplicateIDs = {};
 
-    if(!options.get('repress')){
-        console.log('Searching...');
+    if(!options.repress){
+        console.log('Searching ' + [config.dbIn.name, config.dbIn.collection].join('.') + '...');
     }
     nextQueryFunc();
 
@@ -228,7 +261,7 @@ function main(workbookName, queryCollection, resultCollection){
         var queryContainer;
 
         if (queryContainers.length !== 0){
-            if(options.get('verbose')){
+            if(options.verbose){
                 console.log('\nNext Query:');
             }
             queryContainer = queryContainers.pop();
@@ -236,19 +269,19 @@ function main(workbookName, queryCollection, resultCollection){
             cursor.nextObject(nextObjectFunc);
         }
         else{
-            if(options.get('verbose') && (duplicateIDs !== {})){
+            if((options.verbose) && (duplicateIDs !== {})){
                 console.log('\nThe following ids were found in multiple queries and ommited from the results:');
                 console.dir(duplicateIDs);
             }
-            else if(!options.get('repress')){
-                console.log(Object.keys(insertedIDs).length + ' results.');
+            if(!options.repress){
+                console.log(Object.keys(insertedIDs).length + ' results added to ' + [config.dbOut.name, config.dbOut.collection].join('.'));
             }
             console.log('Done.');
             process.exit(0);
         }
 
         function nextObjectFunc(err, data){
-            if (err) dbErrorHanlder(err);
+            if (err) dbErrorHandler(err);
 
             if(data === null){
                 nextQueryFunc();
@@ -256,9 +289,9 @@ function main(workbookName, queryCollection, resultCollection){
             else if (insertedIDs[data._id] === undefined){
                 data.addedFields = queryContainer.fieldInserts;
                 resultCollection.insert(data, {w:1}, function(err, result){
-                    if (err) dbErrorHanlder(err);
+                    if (err) dbErrorHandler(err);
 
-                    if(options.get('verbose')){
+                    if(options.verbose){
                         console.log('inserted: ' + data._id);
                     }
                     insertedIDs[data._id] = queryContainer;
@@ -267,7 +300,7 @@ function main(workbookName, queryCollection, resultCollection){
             }
             else{
                 resultCollection.remove({ _id : data._id }, function(err, result){
-                    if(options.get('verbose')){
+                    if(options.verbose){
                         console.log('removed: ' + data._id);
                     }
                     cursor.nextObject(nextObjectFunc);
@@ -282,7 +315,7 @@ function main(workbookName, queryCollection, resultCollection){
 }
 
 function getSheetQueries(sheet){
-    var queryBuilder = new QueryBuilder(sheet, dbErrorHanlder);
+    var queryBuilder = new QueryBuilder(sheet, dbErrorHandler);
     var rowRange = XLSXLib.getRowRange(sheet);
     var colRange = XLSXLib.getColRange(sheet);
     var queryContainers = [];
