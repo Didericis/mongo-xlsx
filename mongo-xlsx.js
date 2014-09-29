@@ -88,7 +88,7 @@ function prepOptions(config, args, options){
                 process.exit(0);
             }
             else if (label === 'ACCEPT'){
-                callback(config);
+                callback(config, options);
             }
             else if (label === 'MAKE DEFAULT'){
                 menu.write('Saving...');
@@ -109,55 +109,61 @@ function prepOptions(config, args, options){
         menu.createStream().pipe(process.stdout);
     }
 
-    config.options = options;
     if (options.configure){
         optionMenu(config);
     }
     else{
-        callback(config);
+        callback(config, options);
     }
 }
 
-function getWBKPath(config){
+function getWBKPath(config, options){
     var callback = getCredentials;
-    var menu = TermMenu({ width: 29, x: 4, y: 2 });
-    var fileNames = fs.readdirSync(config.wbkLib);
     var workbookNames = [];
     var ext;
     var basename;
     var validExtension;
 
-    menu.reset();
-    menu.write('Select XLSX Query File\n');
-    menu.write('-------------------------\n');
-    for(var i = 0; i < fileNames.length; i++){
-        ext = path.extname(fileNames[i]);
-        basename;
-        validExtension = '.xlsx';
-        if(ext === validExtension){
-            basename = path.basename(fileNames[i], validExtension);
-            menu.add(basename);
-            workbookNames.push(basename)
-        }
-    }
-    menu.add('EXIT');
-
-    menu.on('select', function (label) {
-        menu.close();
-        if(label === 'EXIT'){
-            console.log('Exiting...');
-            process.exit(0);
-        }
-        else{
-            config.wbkName = label;
-            config.wbkPath = path.join(config.wbkLib, label + validExtension);
-            callback(config);
-        }
+    fs.readdir(config.wbkLib, function(err, files){
+        if (err) dbErrorHandler(err);
+        wbkMenu(files);
     });
-    menu.createStream().pipe(process.stdout);
+
+    function wbkMenu(fileNames){
+        var menu = TermMenu({ width: 29, x: 4, y: 2 });
+
+        menu.reset();
+        menu.write('Select XLSX Query File\n');
+        menu.write('-------------------------\n');
+        for(var i = 0; i < fileNames.length; i++){
+            ext = path.extname(fileNames[i]);
+            basename;
+            validExtension = '.xlsx';
+            if(ext === validExtension){
+                basename = path.basename(fileNames[i], validExtension);
+                menu.add(basename);
+                workbookNames.push(basename)
+            }
+        }
+        menu.add('EXIT');
+
+        menu.on('select', function (label) {
+            menu.close();
+            if(label === 'EXIT'){
+                console.log('Exiting...');
+                process.exit(0);
+            }
+            else{
+                config.wbkName = label;
+                config.wbkPath = path.join(config.wbkLib, label + validExtension);
+                callback(config, options);
+            }
+        });
+        menu.createStream().pipe(process.stdout);
+    }
 }
 
-function getCredentials(config){
+function getCredentials(config, options){
     var callback = connectToDBs;
 
     prompt.start();
@@ -171,25 +177,73 @@ function getCredentials(config){
         config.dbOut.pass = result.dbOutPass;
         config.dbOut.collection = config.wbkName;
 
-        callback(config);
+        callback(config, options);
     });
 }
 
-function connectToDBs(config){
+function connectToDBs(config, options){
     connectToDB(config.dbIn, function(queryCollection, queryDb){
         connectToDB(config.dbOut, function(resultCollection, resultDb){
             collectionExists(resultDb, config.dbOut.collection, function(exists){
                 if(exists){
                     var msg = 'Collection by the name "' + config.dbOut.collection;
-                    msg += '" already exits. Please rename and try again.';
-                    dbErrorHandler(msg);
+                    msg += '" already exits. Overwrite?';
+                    confirmationMenu(msg, function(result){
+                        if (result){
+                            console.log('Overwriting ' + config.dbOut.collection + '...');
+                            resultDb.dropCollection(config.dbOut.collection, function(err){
+                                if (err) dbErrorHandler(err);
+
+                                console.log('Done.');
+                                main(config, options, queryCollection, resultCollection);
+                            });
+                        }
+                        else{
+                            console.log('Exiting...');
+                            process.exit(0);
+                        }
+                    });
                 }
                 else{
-                    main(config, queryCollection, resultCollection);
+                    main(config, options, queryCollection, resultCollection);
                 }
             });
         });
     });   
+}
+
+function confirmationMenu(msg, callback){
+    var menu = TermMenu({ width: 30, x: 4, y: 2 });
+    var newMessage = '';
+    var result;
+
+    menu.reset();
+
+    while (msg.length > menu.width){
+        menu.write(msg.slice(0, 30) + '\n');
+        msg = msg.slice(30);
+    }
+    menu.write(msg);
+    menu.write('\n-------------------------\n');
+    menu.add('YES');
+    menu.add('NO');
+    menu.add('EXIT');
+
+    menu.on('select', function (label) {
+        menu.close();
+        if(label === 'EXIT'){
+            console.log('Exiting...');
+            process.exit(0);
+        }
+        else if (label === 'YES'){
+            result = true;
+        }
+        else if (label === 'NO'){
+            result = false;
+        }
+        callback(result);
+    });
+    menu.createStream().pipe(process.stdout);   
 }
 
 function connectToDB(fields, callback){
@@ -210,8 +264,8 @@ function connectToDB(fields, callback){
         }
     });
 
-    function connect(db, err, result) {
-        if (!err && !result){
+    function connect(db, err, auth) {
+        if (!err && !auth){
             err = new Error('Could not authenticate user ' + fields.user);
         }
         if (err){
@@ -243,12 +297,11 @@ function collectionExists(db, collectionName, callback){
     });
 }
 
-function main(config, queryCollection, resultCollection){
+function main(config, options, queryCollection, resultCollection){
     var mainWorkbook = XLSXLib.openWorkbook(config.wbkLib + '/' + config.wbkName + '.xlsx');
     var sheet = mainWorkbook.Sheets[mainWorkbook.SheetNames[0]];
     var sheetQueries = getSheetQueries(sheet);
     var queryContainers = sheetQueries.queryContainers;
-    var options = config.options;
     var insertedIDs = {};
     var duplicateIDs = {};
 
