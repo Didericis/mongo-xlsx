@@ -12,6 +12,7 @@
     "cli": "^0.6.4",
     "moment": "^2.8.3",
     "mongodb": "^1.4.10",
+    "promise": "^6.0.0",
     "prompt": "^0.2.14",
     "selectn": "^0.9.6",
     "terminal-menu": "^0.3.2",

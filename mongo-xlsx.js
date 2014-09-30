@@ -8,43 +8,15 @@ var NPU = require('./lib/NestedPropertyUtil');
 var QueryBuilder = require('./lib/QueryBuilder');
 var XLSXLib = require('./lib/XLSXLib');
 
-var configFileName = 'config.json';
+var configFileName = 'json/config.json';
 
-setup();
+loadConfig(configFileName);
 
-function setup(){
-    var callback = defineCLIOptions;
-    var cli = require('cli');
-    var config = {
-        wbkLib : process.env.HOME + '/Documents',
-        dbIn : {
-            name : 'test',
-            host : 'localhost',
-            port : 27017
-        },
-        dbOut : {
-            name : 'test',
-            host : 'localhost',
-            port : 27017
-        }
-    };
-    var configJSON;
-
-    fs.exists(configFileName, function (exists) {
-        if (!exists){
-            configJSON = JSON.stringify(config);
-            fs.writeFile(configFileName, configJSON, function(err){
-                if (err) dbErrorHandler(err);
-                callback(cli, config);
-            });
-        }
-        else{
-            fs.readFile(configFileName, function(err, data){
-                if (err) dbErrorHandler(err);
-                config = JSON.parse(data);
-                callback(cli, config);
-            });
-        }
+function loadConfig(configFileName){
+    fs.readFile(configFileName, function(err, data){
+        if (err) dbErrorHandler(err);
+        config = JSON.parse(data);
+        callback(cli, config);
     });
 }
 

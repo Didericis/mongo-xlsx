@@ -1,0 +1,13 @@
+{
+    "wbkLib": "/Users/eric/Documents",
+    "dbIn": {
+        "name": "test",
+        "host": "localhost",
+        "port": 27017
+    },
+    "dbOut": {
+        "name": "test",
+        "host": "localhost",
+        "port": 27017
+    }
+}
