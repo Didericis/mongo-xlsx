@@ -1,5 +1,5 @@
 #WARNING#
-###This app has not yet been fully tested/completed#
+###This app has not been completed#
 
 mongo-xlsx
 ==========
