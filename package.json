@@ -1,5 +1,5 @@
 {
-  "main": "mongo-xlsx.js",
+  "main": "index.js",
   "name": "mongo-xlsx",
   "author": {
     "name": "didericis"

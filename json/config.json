@@ -1,13 +1,17 @@
 {
-    "wbkLib": "/Users/eric/Documents",
-    "dbIn": {
-        "name": "test",
-        "host": "localhost",
-        "port": 27017
-    },
-    "dbOut": {
-        "name": "test",
-        "host": "localhost",
-        "port": 27017
-    }
+    "workbookLib": "/Users/eric/Dropbox/ServerDump",
+    "dbs": [
+		{
+            "db": "HartTest1",
+            "host": "localhost",
+            "port": 27017,
+            "type": "in"
+        },
+        {
+            "db": "ResultTest",
+            "host": "localhost",
+            "port": 27017,
+            "type": "out"
+        }
+    ]
 }
