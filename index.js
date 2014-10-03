@@ -19,7 +19,6 @@ loadConfig( { configFileName : __dirname + '/json/config.json' } ).then
 (dbErrorHandler);
 
 function dbErrorHandler(err){
-    console.log('HOORAY');
     console.log(err.stack);
     throw err;
 }
