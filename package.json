@@ -1,6 +1,7 @@
 {
   "main": "index.js",
   "name": "mongo-xlsx",
+  "version": "0.0.1-alpha",
   "author": {
     "name": "didericis"
   },
