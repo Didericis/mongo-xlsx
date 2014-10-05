@@ -19,6 +19,6 @@ loadConfig( { configFileName : __dirname + '/json/config.json' } ).then
 (dbErrorHandler);
 
 function dbErrorHandler(err){
-    console.log(err.stack);
-    throw err;
+    console.log(err);
+    process.exit(1);
 }
