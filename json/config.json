@@ -1,15 +1,16 @@
 {
-    "workbookLib": "/Users/eric/Dropbox/ServerDump",
+    "workbookLib": "/Users/eric/Desktop",
+    "resultsLib": "/Users/eric/Desktop/out",
     "dbs": [
-		{
-            "db": "HartTest1",
-            "host": "localhost",
+        {
+            "db": "DataToAnalyze",
+            "host": "54.164.117.183",
             "port": 27017,
             "type": "in"
         },
         {
             "db": "ResultTest",
-            "host": "localhost",
+            "host": "54.164.117.183",
             "port": 27017,
             "type": "out"
         }
